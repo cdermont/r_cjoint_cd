@@ -122,9 +122,7 @@ get.conditional.effects <- function(object, conditional.levels, current.effect, 
 # with no given facet and no respondent vars, this choice is irrelevant (unconditional only)
 # with no given facet and respondent vars, default is all but can choose just unconditional or interaction
 # with a facet given (respondent or otherwise), similarly can choose
-#' @method plot amce
-#' @export 
-plot.amce <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, xlim=NULL, breaks=NULL, labels=NULL, attribute.names = NULL, level.names = NULL, label.baseline = TRUE, text.size=11, text.color = "black", point.size = .5, dodge.size=0.9, plot.theme = NULL, plot.display = "all", facet.names = NULL, facet.levels = NULL, group.order = NULL,...) {
+plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, xlim=NULL, breaks=NULL, labels=NULL, attribute.names = NULL, level.names = NULL, label.baseline = TRUE, text.size=11, text.color = "black", point.size = .5, dodge.size=0.9, plot.theme = NULL, plot.display = "all", facet.names = NULL, facet.levels = NULL, group.order = NULL,...) {
   
   # You need ggplot2
   amce_obj <- x

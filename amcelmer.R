@@ -95,7 +95,8 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
     if (class(data[[char]]) == "factor") {
       old_names <- names(user_levels)
       user_levels <- c(user_levels,levels(data[[char]]))
-      names(user_levels) <- c(old_names,clean.names(levels(data[[char]])))
+      new_names <- sapply(clean.names(levels(data[[char]])),function(x) paste(clean.names(char),x,sep=""))
+      names(user_levels) <- c(old_names,new_names)
     }
   }
   
@@ -112,9 +113,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   orig_effects <- clean.names(attr(terms(formula_user),"term.labels"))
   #formula sorting part I: sort non-interaction terms and put them first
   orig_effects <- c(sort(orig_effects[!grepl(":",orig_effects)]), orig_effects[grepl(":",orig_effects)])
-  #combine with "+"
   vars_plus <- paste(orig_effects,collapse = " + ")
-  #then remake formula 
   form <- formula(paste(c(y_var,vars_plus),collapse = "~"))
   orig_effects <- attr(terms(form),"term.labels")
   
@@ -133,7 +132,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   vars_plus <- paste(orig_effects,collapse = " + ")
   #then remake formula 
   form <- formula(paste(c(y_var,vars_plus),collapse = "~"))
-  orig_effects <- attr(terms(form),"term.labels")
+  orig_effects <- clean.names(attr(terms(form),"term.labels"))
   
   #unique variables only (no interactions)
   unique_vars <- clean.names(rownames(attr(terms(form),"factor"))[-1])
@@ -167,7 +166,6 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   }
   
   ### Extra name cleaning
-  
   #cleaning additional inputs
   if (!is.null(respondent.id)) respondent.id <- clean.names(respondent.id)
   if (!is.null(baselines)) {
@@ -177,14 +175,16 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   
   #cleaning within data 
   colnames(data) <- clean.names(colnames(data))
-  data <- data.frame(data) #in case of dplyr etc.
-  for (var in colnames(data)) {
+  ## data <- data.frame(data) #in case of dplyr etc.
+  var_to_check_levels <- unique(c(formula_char_user, respondent_vars, profile_vars, profile_effects, orig_effects))
+  
+  for (var in var_to_check_levels) {
     if (class(data[[var]]) == "factor") {
       clean.labels <- clean.names(levels(data[[var]]))
       if (length(unique(clean.labels)) != length(clean.labels)) {
-        stop (paste("Error: levels of variable", var, "when whitespace and meta-characters are removed. Please rename."))
+        stop (paste("Error: levels of variable", var, "are not unique when whitespace and meta-characters are removed. Please rename."))
       }
-      data[[var]] <- factor(data[[var]],levels=levels(data[[var]]),labels=clean.names(levels(data[[var]])))
+      data[[var]] <- factor(data[[var]],levels=levels(data[[var]]), labels=clean.names(levels(data[[var]])))
     }
   }
   
@@ -249,14 +249,15 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   if (class(design) == "conjointDesign") {
     # Remove whitespaces etc from dimension names of design array 
     names(dimnames(design$J)) <- clean.names(names(dimnames(design$J)))
-    dimnames(design$J) <- lapply(dimnames(design$J),function(x) clean.names(x))  
+    dimnames(design$J) <- lapply(dimnames(design$J),function(x) clean.names(x))
+    
     #and design dependencies
     names(design$depend) <- clean.names(names(design$depend))
     design$depend <- lapply(design$depend,function(x) clean.names(x))  
     #Now check to make sure profile varying attributes are in conjointDesign
     for (eff in profile_vars) {   
       if (!(eff %in% names(dimnames(design$J)))) {
-        stop(paste("Error:", var, "not in 'design' object"))
+        stop(paste("Error:", eff, "not in 'design' object"))
       }
     }      
     #Check to make sure conjointDesign attributes are in data and level names match
@@ -265,13 +266,31 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
         stop(paste("Error: attribute", eff, "in 'design' object is not in 'data'"))
       } else {
         # Check all level names for the attribute in dataset appear in design
-        for (lev in levels(as.factor(data[[eff]]))) {
+        for (lev in clean.names(levels(as.factor(data[[eff]])))) {
           if (!(lev %in% dimnames(design$J)[[eff]])) {
+            #print(paste0('checking level ', lev))
             stop(paste("Error: factor level", lev, "of attribute", eff, "not in 'design' object"))
           }
         }
       }
-    }    
+    }
+    
+    depend_to_check <- NULL
+    for (var in names(design$depend)) {
+      depend_to_check <- c(depend_to_check,design$depend[[var]])
+    }
+    ## only check any variables that weren't already checked
+    depend_to_check <- depend_to_check[!depend_to_check %in% var_to_check_levels]
+    ## Check that all dependencies have unique levels
+    for (var in depend_to_check){
+      if (class(data[[var]]) == "factor") {
+        clean.labels <- clean.names(levels(data[[var]]))
+        if (length(unique(clean.labels)) != length(clean.labels)) {
+          stop (paste("Error: levels of variable", var, "used as a dependency, are not unique when whitespace and meta-characters are removed. Please rename."))
+        }
+        data[[var]] <- factor(data[[var]],levels=levels(data[[var]]), labels=clean.names(levels(data[[var]])))
+      }
+    }
   } else if (design == "uniform") {    
     # else if design == "uniform", create J-dimensional array 
     design <- list()        
@@ -280,15 +299,15 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
     design.dim <- vector(length=length(profile_vars))
     dim_list <- list()
     for (i in 1:length(profile_vars)) {
-      design.dim[i] <- length(unique(data[[profile_vars[i]]]))
       dim_list[[i]] <- levels(factor(data[[profile_vars[i]]]))
+      design.dim[i] <- length(dim_list[[i]])
     }
     names(dim_list) <- profile_vars
     design$J <- array(1/prod(design.dim), dim=design.dim, dimnames=dim_list)
     design$depend <- compute_dependencies(design$J)       
   } else {
     #if neither uniform nor conjointDesign, error
-    stop('Error: argument \'design\' must be a valid character string ("uniform") or a conjointDesign object')   
+    stop("Design object must be a valid character string 'uniform' or a conjointDesign object")   
   }
   
   ####### Subsetting data    
@@ -367,10 +386,9 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   #combine with "+"
   vars_plus <- paste(all_run_vars,collapse = " + ")
   #then remake formula 
-  form_full <- paste(c(y_var,vars_plus),collapse = "~")
-  all_run_vars <- attr(terms(formula(form_full)),"term.labels")
-  form_full <- paste(form_full, " + ", hierarchy, sep="")
-  form_full<- formula(form_full)
+  form_full_nohierarchy <- paste(c(y_var,vars_plus),collapse = "~")
+  form_full <- formula(paste(form_full_nohierarchy, " + ", hierarchy, sep=""))
+  all_run_vars <- attr(terms(formula(form_full_nohierarchy)),"term.labels")
   
   ####### If there are respondent varying terms, split into two formulas
   ######## One contains only profile effects
@@ -380,20 +398,19 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
     ### profile only formula
     #remove those involving respondent things
     prof_only <- unlist(sapply(all_run_vars,function(x) {
-      y <- strsplit(x,":")[[1]]
+      y <- clean.names(strsplit(x,":")[[1]])
       if(!any(is.element(y,respondent_vars))) x
     }))
     prof_only_plus <- paste(prof_only,collapse = " + ")
     #formula with profile only
-    form_prof <- paste(all.vars(form_full)[1],prof_only_plus,sep=" ~ ")
-    all_prof <- attr(terms(formula(form_prof)),"term.labels")
-    form_prof <- paste(form_prof, " + ", hierarchy, sep="")
-    form_prof <- formula(form_prof)        
+    form_prof_nohierarchy <- paste(all.vars(form_full)[1],prof_only_plus,sep=" ~ ")
+    form_prof <- formula(paste(form_prof_nohierarchy, " + ", hierarchy, sep=""))
   } else {
     #otherwise use full formula
     form_prof <- form_full
-    all_prof <- all_run_vars
   }
+  all_prof <- clean.names(attr(terms(formula(form_prof_nohierarchy)),"term.labels"))
+  all_run_vars <- clean.names(attr(terms(formula(form_full_nohierarchy)),"term.labels"))
   if (any(!is.element(all_prof,all_run_vars))) {
     warning("Warning: mismatch of term names between full formula and profile formula")
   }
@@ -415,19 +432,46 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
     sample_size_full <- NULL
   }
   
+  #Get coefficients
+  coeffs.prof <- fixef(lin.mod.prof)  
+  if (length(respondent.varying) > 0) {
+    coeffs.full <- fixef(lin.mod.full)  
+  } else {
+    coeffs.full <- NULL
+  }
+  
   #Compute vcov of LMER
   vcov_mat_prof <- vcov(lin.mod.prof)
   if (length(respondent.varying) > 0) {
     vcov_mat_full <- vcov(lin.mod.full)
   } else {
     vcov_mat_full <- NULL
-  }
-  
-  coeffs.prof <- summary(lin.mod.prof)$coefficients[,1]  
-  if (length(respondent.varying) > 0) {
-    coeffs.full <- summary(lin.mod.full)$coefficients[,1]  
-  } else {
-    coeffs.full <- NULL
+  }  
+  ## function for fixing variance-covariance matrices
+  ## input in vcov output from lm and a matrix of varprobs
+  ## draws on matrix package
+  fix.vcov <- function(varprob,vcov) {
+    if (!requireNamespace("Matrix", quietly = TRUE)){
+      stop("Matrix package needed for this function to work. Please install it.",
+           call. = FALSE)
+    }
+    #designate inputs as sparse
+    varprob2 <- Matrix(varprob,sparse=TRUE)
+    vcov2 <- Matrix(vcov,sparse=TRUE)
+    #calculate and add in single sum corrections
+    fix1 <- varprob2 %*% vcov2 + t(varprob2 %*% vcov2) + vcov2
+    #vcov matrix as vector
+    vcov_vector <- matrix(as.vector(vcov2),ncol=1,nrow=length(as.vector(vcov2)))
+    #use to multiply combinations of varprobs by covariances and sum
+    weighted_covs <- kronecker(varprob2,varprob2) %*% vcov_vector
+    #make corrections into a matrix
+    weighted_covs <- matrix(weighted_covs,nrow=nrow(vcov), ncol=ncol(vcov))
+    #add to single sum corrections
+    fix2 <- fix1 + weighted_covs
+    #return as normal matrix
+    out <- matrix(fix2,ncol=ncol(vcov),nrow=nrow(vcov))
+    colnames(out) <- rownames(out) <- rownames(vcov)
+    return(out)
   }
   
   ######### Extract Effects from the profile-vars only linear model
@@ -471,7 +515,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
       #get all level names and coefficient names-- sans baseline!!!
       all_levels[[effect]] <- levels(data[[effect]])[-1]
       all_levels_coefs[[effect]] <- sapply(all_levels[[effect]], function(x) {
-        paste(effect, x, sep="")
+        paste(c(effect,x), collapse="")
       })
     }
     
@@ -492,7 +536,8 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
     } else {
       rownames(results) <- c("AMCE", "Std. Error")
     }
-    colnames(results) <- as.character(levels[,1])
+    colnames(results) <- coefs
+    results[2,] <- NA
     
     #### find extra times when this effect is mentioned
     all_depends <- unlist(sapply(all_prof,USE.NAMES = F,function(x) {
@@ -506,19 +551,13 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
     for(j in 1:nrow(levels)) {
       
       #figure out which level of inter we're doing
-      effect_level <- as.character(levels[j,1])
+      ## effect_level <- as.character(levels[j,1])
       effect_level_coef <- coefs[j]
-      
-      #get its beta and var-cov matrix
-      initial_beta <- coeffs.prof[effect_level_coef][[1]]
-      if (effect_level_coef %in% colnames(vcov_mat_prof)) {
-        initial_var <- vcov_mat_prof[effect_level_coef, effect_level_coef]
-      } else {
-        initial_var <- NA
-      }
+      #get its beta 
+      initial_beta <- coeffs.prof[effect_level_coef]
       
       #if interaction,make sure there is baseline support for this level combination
-      if (!is.na(initial_beta) & !is.na(initial_var) & length(substrings) > 1) {
+      if (!is.na(initial_beta) & length(substrings) > 1) {
         for (effect1 in substrings) {
           #get effect base
           effect_base1 <- levels(data[[effect1]])[1]
@@ -530,7 +569,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
           }                        
           #if there's no support left, change beta and var to NA
           if (nrow(base.subset) == 0) {
-            initial_beta <- initial_var <- NA
+            initial_beta <- NA
             #and give a warning that you had to do it
             warn_i <- warn_i + 1
           }
@@ -539,7 +578,8 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
       
       # If initial_beta and initial_variance are not NA (are valid level combination)
       # and there are dependent variables to incorporate
-      if (!is.na(initial_beta) & !is.na(initial_var) & length(all_depends) > 0) {
+      if (!is.na(initial_beta) & length(all_depends) > 0) {
+        
         #get the slice of design array J associated with baseline and inter level
         J_effect_call <- J_base_call <-  J_call
         for(effect in substrings) {
@@ -554,12 +594,6 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
         eval(call("<-", Quote(J_baseline), J_base_call))
         eval(call("<-", Quote(J_effect), J_effect_call))
         
-        # Initialize some vectors to store interactions and probabilities
-        interaction_probabilities <- c()
-        interaction_names <- c()
-        covariance_names <- c()
-        covariance_probs <- c()
-        
         #### loop over dependencies for all components of interaction
         for(k in 1:length(all_depends)) {
           
@@ -570,7 +604,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
           substrings_d <- substrings_d[!is.element(substrings_d,substrings)]
           all_depend_coefs <- list()
           for (sub in substrings_d) {
-            all_depend_coefs[[sub]] <-  sapply(levels(data[[sub]]), function(x) paste(sub, x,sep=""))
+            all_depend_coefs[[sub]] <-  sapply(levels(data[[sub]]), function(x) paste(c(sub,x),collapse=""))
           }
           all_depend_levels <- expand.grid(all_depend_coefs)
           substrings_l <- strsplit(effect_level_coef,":")[[1]]
@@ -602,67 +636,21 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
           all_depend_level_coefs <- all_depend_level_coefs[!is.na(coeffs.prof[all_depend_level_coefs])]
           varprob_mat[effect_level_coef,all_depend_level_coefs] <- as.numeric(joint_prob[all_depend_level_coefs])/as.numeric(sum(joint_prob))
           
-          ##### if all_depend_level_coefs is 1 or longer (because R doesn't parse for 1:0 correctly)
-          if (length(all_depend_level_coefs)){
-            ##### loop over levels of depends attribute
-            #if present baselines will omit automatically because coefs are NA
-            for (z in 1:length(all_depend_level_coefs)) {
-              
-              #coefficient name that goes with this effect level & depend level
-              depend_level_coef <- all_depend_level_coefs[z] 
-              #calculate probabilities for this effect and depend level 
-              var_prob <- joint_prob[depend_level_coef]
-              var_prob <- as.numeric(var_prob)/as.numeric(sum(joint_prob))
-              
-              #now add interaction beta and variance to initial 
-              if (!is.na(coeffs.prof[depend_level_coef])) {
-                if (!is.na(vcov_mat_prof[depend_level_coef,depend_level_coef]) & !is.na(vcov_mat_prof[effect_level_coef, depend_level_coef])) {
-                  # add weighted beta to initial_beta
-                  initial_beta <- initial_beta + var_prob*coeffs.prof[depend_level_coef]
-                  # add weighted variance + covariance terms too
-                  initial_var <- initial_var + (var_prob^2)*vcov_mat_prof[depend_level_coef, depend_level_coef] +  2*(var_prob)*vcov_mat_prof[effect_level_coef, depend_level_coef]
-                  
-                  # add probabilities and names to compute covariances
-                  interaction_probabilities <- c(interaction_probabilities, var_prob)
-                  interaction_names <- c(interaction_names, depend_level_coef)
-                  #and across different variables
-                  covariance_probs <- c(covariance_probs,var_prob)
-                  covariance_names <- c(covariance_names,depend_level_coef)
-                  
-                }
-              } #end if that added beta & var, cov
-              
-            } #end loop over levels of dependent attribute
+          ##### if all_depend_level_coefs is 1 or longer 
+          if (length(all_depend_level_coefs)) {
+            #calculate probabilities for this effect and depend level 
+            var_prob <- joint_prob[all_depend_level_coefs]
+            var_prob <- as.numeric(var_prob)/as.numeric(sum(joint_prob))
+            # add weighted beta to initial_beta
+            depend_betas <- fixef(lin.mod.prof)[all_depend_level_coefs]
+            initial_beta <- sum(initial_beta,var_prob*depend_betas,na.rm=T)
           }
+          
         } #end for loop over different dependent attributes
-        
-        # after going through all levels of the depends and all dependent attributes
-        # add remaining covariance terms to the parameter variance 
-        if (length(interaction_probabilities) > 1) {
-          #loop over all depend attributes 1 to N-1
-          for (x in 1:(length(interaction_probabilities) - 1)) {
-            #loop over depend attributes one ahead of previous to the end
-            for (y in (x+1):(length(interaction_probabilities))) {
-              initial_var <- initial_var + 2*interaction_probabilities[x]*interaction_probabilities[y]*vcov_mat_prof[interaction_names[x], interaction_names[y]]
-            }
-          }
-        } #end if has more than 1 depend levels and/or depend attributes
-        
-        #add names of depend levels and their var probs to list
-        #if probs not null that is
-        if (!is.null(covariance_probs)) {
-          covariance_list[[effect_level_coef]] <- data.frame(covariance_names,covariance_probs)
-        }
-        
       } #end if has valid beta, var, dependencies
       
       # Store effect and standard error estimates
       results[1,j] <- initial_beta
-      if (!is.na(initial_var)) {
-        results[2,j] <- sqrt(initial_var)
-      } else {
-        results[2,j] <- NA
-      }
       
     } #end for loop over all level combinations
     
@@ -672,47 +660,12 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   } #end for loop over profile effects      
   
   ### fix var-cov matrix
-  
-  ## #add in single sum corrections
-  vcov_prof <- varprob_mat %*% vcov_mat_prof + t(varprob_mat %*% vcov_mat_prof) + vcov_mat_prof
-  
-  ## ## too slow!!
-  ## vcov_test <- vcov_prof
-  ## non_zero_rows <- unlist(sapply(rownames(varprob_mat),function(x) if(sum(varprob_mat[x,]) != 0) x))
-  ## function(x,y,vcov) {
-  ##     out <- vcov[x,y]
-  ##     return(out)
-  ## }
-  ## cov.ij <- Vectorize(cov.ij,vectorize.args = c("x","y"))
-  ## function(e1,e2,varprob,vcov) {        
-  ##     non_zero_e1 <- names(varprob[e1,varprob[e1, ] != 0])
-  ##     non_zero_e2 <- names(varprob[e2,varprob[e2, ] != 0])
-  ##     out <- sum(outer(non_zero_e1,non_zero_e2,function(x,y) varprob[e1,x]*varprob[e2,y]*cov.ij(x,y,vcov_mat_prof)))
-  ##     return(out)
-  ## }
-  ## weights.ij <- Vectorize(weights.ij,vectorize.args = c("e1","e2"))
-  ## test <- outer(non_zero_rows,non_zero_rows,function(x,y) weights.ij(x,y,varprob_mat))
-  
-  #final modifications for var-cov matrix (double sum corrections)
-  #these only exist when both variables have depends terms
-  #so only modify previously modified variables
-  if (length(covariance_list) > 0) {
-    #loop over each modified coefficient
-    for (x in 1:length(covariance_list)) {
-      var1 <- names(covariance_list)[x]
-      names1 <- as.character(covariance_list[[var1]][,1])
-      probs1 <- covariance_list[[var1]][,2]
-      #loop over all other modified coefficients, so i != j
-      for (y in 1:length(covariance_list)) {
-        var2 <- names(covariance_list)[y]
-        names2 <- as.character(covariance_list[[var2]][,1])
-        probs2 <- covariance_list[[var2]][,2]
-        #loop over each one of interaction names for var1
-        for (z in 1:length(names1)) {
-          vcov_prof[var1,var2] <- vcov_prof[var1,var2] + sum(probs1[z]*probs2*vcov_mat_prof[names1[z],names2])  
-        }
-      } 
-    }
+  vcov_prof <- suppressMessages(fix.vcov(varprob_mat,vcov_mat_prof))
+  #write in adjusted variances to output matrix
+  for (i in 1:length(estimates)) {
+    coef_names <- colnames(estimates[[i]])
+    variances <- sqrt(diag(vcov_prof)[coef_names])
+    estimates[[i]][2,] <- ifelse(is.na(estimates[[i]][1,]),NA,variances)
   }
   
   #determine term names for profile effects (no depends) to keep
@@ -762,7 +715,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
           all_levels[[effect]] <- levels(data[[effect]])[-1]
           all_levels_coefs[[effect]] <- sapply(all_levels[[effect]],
                                                function(x) {
-                                                 paste(effect, x, sep="")
+                                                 paste(c(effect,x), collapse="")
                                                })
         }
       }
@@ -779,7 +732,9 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
       # Initialize the results 
       results <- matrix(nrow=2, ncol = nrow(levels))
       rownames(results) <- c("Conditional Estimate", "Std. Error")
-      colnames(results) <- levels[,1]
+      colnames(results) <- coefs
+      #write NA to SE row to start
+      results[2,] <- NA
       
       #### find extra times when this effect is mentioned in full formula
       # only if anything related to profile var is involved
@@ -805,19 +760,12 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
       for(j in 1:nrow(levels)) {
         
         #figure out which level of inter we're doing
-        effect_level <- as.character(levels[j,1])
         effect_level_coef <- coefs[j]
-        
-        #get its beta and var-cov matrix
-        initial_beta <- coeffs.full[effect_level_coef]
-        if (effect_level_coef %in% colnames(vcov_mat_full)) {
-          initial_var <- vcov_mat_full[effect_level_coef, effect_level_coef]
-        } else {
-          initial_var <- NA
-        }
+        #get its beta 
+        initial_beta <-coeffs.full[effect_level_coef]
         
         #make sure there is baseline support for this level combination
-        if (!is.na(initial_beta) & !is.na(initial_var)) {                   
+        if (!is.na(initial_beta)) {                   
           for (effect1 in substrings[substrings %in% profile_vars]) {
             #get effect base
             effect_base1 <- levels(data[[effect1]])[1]
@@ -829,7 +777,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
             }                        
             #if there's no support left, change beta and var to NA
             if (nrow(base.subset) == 0) {
-              initial_beta <- initial_var <- NA
+              initial_beta <- NA
               #and give a warning that you had to do it
               warn_i <- warn_i + 1
             }
@@ -838,7 +786,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
         
         # If initial_beta and initial_variance are not NA and there are depends
         # proceed to add to beta and var
-        if (!is.na(initial_beta) & !is.na(initial_var) & length(all_depends) > 0) {
+        if (!is.na(initial_beta) & length(all_depends) > 0) {
           
           #get the slice of design array J associated with baseline and inter level
           #profile variables only!
@@ -855,12 +803,6 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
           eval(call("<-", Quote(J_baseline), J_base_call))
           eval(call("<-", Quote(J_effect), J_effect_call))
           
-          # Initialize some vectors to store interactions and probabilities
-          interaction_probabilities <- c()
-          interaction_names <- c()
-          covariance_names <- c()
-          covariance_probs <- c()
-          
           #### loop over dependencies for all components of effect
           for(k in 1:length(all_depends)) {
             
@@ -871,7 +813,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
             substrings_d <- substrings_d[!is.element(substrings_d,substrings)]
             all_depend_coefs <- list()
             for (sub in substrings_d) {
-              all_depend_coefs[[sub]] <-  sapply(levels(data[[sub]]), function(x) paste(sub, x,sep=""))
+              all_depend_coefs[[sub]] <-  sapply(levels(data[[sub]]), function(x) paste(c(sub,x),collapse=""))
             }
             all_depend_levels <- expand.grid(all_depend_coefs)
             substrings_l <- strsplit(effect_level_coef,":")[[1]]
@@ -884,7 +826,7 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
             all_depend_level_coefs <- apply(all_depend_levels, 1, function(x) paste(x,collapse=":"))
             
             #baseline support for depend attribute level in inter
-            if (!(is.null(dim(J_baseline)))){
+            if (!(is.null(dim(J_baseline)))) {
               baseline_support <- apply(J_baseline,substrings_d,sum)
             } else {
               baseline_support <- J_baseline
@@ -901,68 +843,25 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
             joint_prob <- as.vector(joint_prob)
             names(joint_prob) <- all_depend_level_coefs
             
-            all_depend_level_coefs <- all_depend_level_coefs[!is.na(coeffs.full[all_depend_level_coefs])]
+            all_depend_level_coefs <- all_depend_level_coefs[!is.na(fixef(lin.mod.full)[all_depend_level_coefs])]
             varprob_mat[effect_level_coef,all_depend_level_coefs] <- as.numeric(joint_prob[all_depend_level_coefs])/as.numeric(sum(joint_prob))
             
-            ## If there are non-null # of depend-level-coefs (because R doesn't handle for 1:0 correctly)
-            if (length(all_depend_level_coefs) != 0){
-              ##### loop over levels of depends attribute
-              #baselines will omit automatically because coefs are NA
-              for (z in 1:length(all_depend_level_coefs)) {
-                
-                #coefficient name that goes with this effect level & depend level
-                depend_level_coef <- all_depend_level_coefs[z] 
-                #calculate probabilities for this effect and depend level 
-                var_prob <- joint_prob[depend_level_coef]
-                var_prob <- as.numeric(var_prob)/as.numeric(sum(joint_prob))
-                
-                #now add interaction beta and variance to initial 
-                if (!is.na(coeffs.full[depend_level_coef])) {
-                  if (!is.na(vcov_mat_full[depend_level_coef,depend_level_coef]) & !is.na(vcov_mat_full[effect_level_coef, depend_level_coef])) {
-                    # add probabilities to initial_beta
-                    initial_beta <- initial_beta +
-                      var_prob*coeffs.full[depend_level_coef]
-                    # add variance + covariance terms too
-                    initial_var <- initial_var + (var_prob^2)*vcov_mat_full[depend_level_coef,depend_level_coef] +  2*(var_prob)*vcov_mat_full[effect_level_coef, depend_level_coef]
-                    
-                    # add probabilities and names to compute covariances
-                    interaction_probabilities <- c(interaction_probabilities, var_prob)
-                    interaction_names <- c(interaction_names, depend_level_coef)
-                    #and across different variables
-                    covariance_probs <- c(covariance_probs,var_prob)
-                    covariance_names <- c(covariance_names,depend_level_coef)
-                    
-                  }
-                } #end if that added beta & var, cov       
-              } #end loop over levels of dependent attribute
-            } #end for loop over different dependent attributes
-          }
-          # after going through all levels of the depends and all dependent attributes
-          # add remaining covariance terms to the parameter variance 
-          if (length(interaction_probabilities) > 1) {
-            #loop over all depend attributes 1 to N-1
-            for (x in 1:(length(interaction_probabilities) - 1)) {
-              #loop over depend attributes one ahead of previous to the end
-              for (y in (x+1):(length(interaction_probabilities))) {
-                initial_var <- initial_var + 2*interaction_probabilities[x]*interaction_probabilities[y]*vcov_mat_full[interaction_names[x], interaction_names[y]]
-              }
-            }
-          } #end if has more than 1 depend levels and/or depend attributes
+            ## If there are non-null # of depend-level-coefs
+            if (length(all_depend_level_coefs)) {
+              #calculate probabilities for this effect and depend level 
+              var_prob <- joint_prob[all_depend_level_coefs]
+              var_prob <- as.numeric(var_prob)/as.numeric(sum(joint_prob))
+              # add weighted beta to initial_beta
+              depend_betas <- fixef(lin.mod.full)[all_depend_level_coefs]
+              initial_beta <- sum(initial_beta,var_prob*depend_betas, na.rm=T)
+            }        
+            
+          } #end for loop over different dependent attributes
           
-          #add names of depend levels and their var probs to list
-          #if there are any that is
-          if (!is.null(covariance_probs)) {
-            covariance_list[[effect_level_coef]] <- data.frame(covariance_names,covariance_probs)
-          }
         } #end if initial beta and var are NA, has depends
         
-        # Store effect and standard error estimates
+        # Store effect estimates
         results[1,j] <- initial_beta
-        if (!is.na(initial_var)) {
-          results[2,j] <- sqrt(initial_var)
-        } else {
-          results[2,j] <- NA
-        }
         
       } #end for loop over all level combinations
       
@@ -971,29 +870,13 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
       
     } #end for loop over respondent related effects      
     
-    ## #add in single sum corrections
-    vcov_resp <- varprob_mat %*% vcov_mat_full + t(varprob_mat %*% vcov_mat_full) + vcov_mat_full
-    
-    #final modifications for var-cov matrix
-    #these only exist when both variables have depends terms
-    #so only modify previously modified variables
-    if (length(covariance_list) > 0) {
-      #loop over each modified coefficient
-      for (x in 1:length(covariance_list)) {
-        var1 <- names(covariance_list)[x]
-        names1 <- as.character(covariance_list[[var1]][,1])
-        probs1 <- covariance_list[[var1]][,2]
-        #loop over all other modified coefficients, so i != j
-        for (y in 1:length(covariance_list)) {
-          var2 <- names(covariance_list)[y]
-          names2 <- as.character(covariance_list[[var2]][,1])
-          probs2 <- covariance_list[[var2]][,2]
-          #loop over each one of interaction names for var1
-          for (z in 1:length(names1)) {
-            vcov_resp[var1,var2] <- vcov_resp[var1,var2] + sum(probs1[z]*probs2*vcov_mat_full[names1[z],names2])  
-          }
-        } 
-      }
+    ##fix variance-covariance matrix
+    vcov_resp <- suppressMessages(fix.vcov(varprob_mat,vcov_mat_full))
+    #write in adjusted variances
+    for (i in 1:length(conditional.estimates)) {
+      coef_names <- colnames(conditional.estimates[[i]])
+      variances <- sqrt(diag(vcov_resp)[coef_names])
+      conditional.estimates[[i]][2,] <- ifelse(is.na(conditional.estimates[[i]][1,]), NA, variances)
     }
     
     ###terms to keep (no depends)
@@ -1046,12 +929,12 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   for (k in unique_vars) {
     if (class(data[[k]]) == "factor") {
       output$baselines[[k]] <- levels(data[[k]])[1]
-    } else {
+    } else if (class(data[[k]]) == "numeric") {
       output$continuous[[k]] <- quantile(model.matrix(form,data)[,k], probs=c(0.25,0.5,0.75), na.rm=T)
-      #output$continuous[[k]] <- quantile(data[[k]],  probs=c(0.25,0.5,0.75),na.rm=T)
     }
   }
   
+  #save number of respondents if ID given
   #save number of respondents if ID given
   if (!is.null(respondent.id)) {
     output$numrespondents <- length(unique(data[[respondent.id]]))
@@ -1073,4 +956,5 @@ amce.lmer <- function(formula, hierarchy, data, design="uniform",
   output$data <- data
   return(output)
 }
+
 
