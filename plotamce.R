@@ -124,7 +124,7 @@ get.conditional.effects <- function(object, conditional.levels, current.effect, 
 # with a facet given (respondent or otherwise), similarly can choose
 #' @method plot amce
 #' @export 
-plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, xlim=NULL, breaks=NULL, labels=NULL, attribute.names = NULL, level.names = NULL, label.baseline = TRUE, text.size=11, text.color = "black", point.size = .5, dodge.size=0.9, plot.theme = NULL, plot.display = "all", facet.names = NULL, facet.levels = NULL, ...) {
+plot.amce <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, xlim=NULL, breaks=NULL, labels=NULL, attribute.names = NULL, level.names = NULL, label.baseline = TRUE, text.size=11, text.color = "black", point.size = .5, dodge.size=0.9, plot.theme = NULL, plot.display = "all", facet.names = NULL, facet.levels = NULL, group.order = NULL,...) {
   
   # You need ggplot2
   amce_obj <- x
@@ -157,7 +157,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
       baseline_interactions <- c(baseline_interactions,base_coef)
     }
     interaction_str <- paste(baseline_interactions,sep="",collapse=":")
-    raw_levels[[effect]] <- c(interaction_str, raw_levels[[effect]]) 
+    raw_levels[[effect]] <- c(interaction_str, raw_levels[[effect]])
   }
   
   ################################### Incorporate and adjust user-input: general
@@ -170,7 +170,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
     zscr <- qnorm(1- ((1-.95)/2))
   }
   
-  ################################### Incorporate and adjust user-input: naming    
+  ################################### Incorporate and adjust user-input: naming
   
   # Sanity check user-provided attribute.names against AMCE objects
   if (!is.null(attribute.names)) {
@@ -191,7 +191,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
           cat(paste("Error: level.names lengths do not match levels for attribute ", name, "\n",sep=""))
           cat(paste("Defaulting level.names for attribute ", name, " to level names in AMCE object", "\n",sep=""))
           level.names[[name]] <- NULL
-        }   
+        }
       } else {
         cat(paste("Error: level.names entry ",name," not in AMCE object. Removing level.names for attribute.","\n",sep=""))
         level.names[[name]] <- NULL
@@ -277,7 +277,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
         facet.levels[[facet.name]] <- clean.names(facet.levels[[facet.name]])
         #make sure that if it's profile-varying, there's more than base
         if (facet.name %in% names(amce_obj$estimates) && is.element(amce_obj$baselines[[facet.name]],facet.levels[[facet.name]])) {
-          stop (paste(c("Error: Facet level \"",as.character(amce_obj$baselines[[facet.name]]), "\" is the baseline level of a profile varying attribute. Please provide alternative facet level or use defaults."), collapse=""))               
+          stop (paste(c("Error: Facet level \"",as.character(amce_obj$baselines[[facet.name]]), "\" is the baseline level of a profile varying attribute. Please provide alternative facet level or use defaults."), collapse=""))
         }
         #names from user input if none provided
         if (is.null(names(facet.levels[[facet.name]]))) {
@@ -307,7 +307,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
         }
         # get pure levels
         facet.levels[[facet.name]] <- sub(facet.name,"",fac.levs)
-        #add in baseline 
+        #add in baseline
         facet.levels[[facet.name]] <- c(amce_obj$baselines[[facet.name]], facet.levels[[facet.name]])
         #names from user input
         fac.levs <- c(paste(facet.name,amce_obj$baselines[[facet.name]],sep=""),fac.levs)
@@ -315,7 +315,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
       } else if (facet.name %in% names(amce_obj$continuous)) {
         #if it's continuous, default is quantiles
         facet.levels[[facet.name]] <-  amce_obj$continuous[[facet.name]]
-      }             
+      }
     }
   }
   
@@ -353,7 +353,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
         attr_remove <- c(attr_remove,attr_remove1)
       }
       raw_attributes <- raw_attributes[!is.element(raw_attributes,attr_remove)]
-    }       
+    }
     #loop over raw attribute names
     for (i in 1:length(raw_attributes)) {
       #get raw attribute name
@@ -362,29 +362,29 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
       print_attr_name <- attribute.names[which(names(amce_obj$estimates) == raw_attributes[i])]
       #set up basic group header and add to plot
       d_head <- data.frame(pe=NA, se=NA, upper=NA, lower=NA, var= attr_name, printvar=paste(print_attr_name, ":", sep=""), group="<NA>",facet=uncond.facet.name)
-      d <- rbind(d,d_head)    
+      d <- rbind(d,d_head)
       #iterate over levels
       for (j in 1:length(raw_levels[[attr_name]])) {
         #raw level name
         level_name <- raw_levels[[attr_name]][j]
         #get level name to print
-        print_level_name <- level.names[[attr_name]][j]              
+        print_level_name <- level.names[[attr_name]][j]
         #if on the first level
         if (j == 1) {
           if (label.baseline) {
             print_level_name <- paste("(Baseline = ",print_level_name,")",sep="")
           }
           #get the baseline and print a blank line
-          d_lev <- data.frame(pe=NA, se=NA, upper=NA, lower=NA, var=level_name, printvar=paste("   ", print_level_name,sep=""), group=print_attr_name, facet=uncond.facet.name) 
+          d_lev <- data.frame(pe=NA, se=NA, upper=NA, lower=NA, var=level_name, printvar=paste("   ", print_level_name,sep=""), group=print_attr_name, facet=uncond.facet.name)
         } else {
           #retrieve estimate and SE
           val_pe <- amce_obj$estimates[[attr_name]][1,level_name]
-          val_se <- amce_obj$estimates[[attr_name]][2,level_name]       
+          val_se <- amce_obj$estimates[[attr_name]][2,level_name]
           #calculate bounds
           upper_bnd <- val_pe + zscr*val_se
-          lower_bnd <- val_pe - zscr*val_se 
+          lower_bnd <- val_pe - zscr*val_se
           #make line to add to plot data
-          d_lev <- data.frame(pe=val_pe, se=val_se, upper=upper_bnd, lower=lower_bnd, var=level_name, printvar=paste("   ", print_level_name,sep=""), group=print_attr_name, facet=uncond.facet.name)       
+          d_lev <- data.frame(pe=val_pe, se=val_se, upper=upper_bnd, lower=lower_bnd, var=level_name, printvar=paste("   ", print_level_name,sep=""), group=print_attr_name, facet=uncond.facet.name)
         } #end if a baseline
         #add to plot
         d <- rbind(d,d_lev)
@@ -398,7 +398,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
   if (plot.display != "unconditional" & !is.null(facet.names)) {
     
     #loop over facets
-    for (facet.name in facet.names) {    
+    for (facet.name in facet.names) {
       
       #how to print it
       print_facet_name <- amce_obj$user.names[[facet.name]]
@@ -421,6 +421,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
       }
       #just unique ones
       all_mod <- unique(all_mod)
+      
       #Temp Bug Fixing
       if (is.element(facet.name,names(amce_obj$estimates))) {
         #if ACIE, then remove baseline of facet in the d dataset filling process
@@ -432,7 +433,6 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
       
       #for each actual facet level make new set of plot data
       for (k in facet.start:length(facet.levels[[facet.name]])) {
-        
         # set level
         facet_lev <- facet.levels[[facet.name]][k]
         #how to print facet level
@@ -462,29 +462,30 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
           } else {
             #calculate from function if conditional
             estimate.source <- get.conditional.effects(amce_obj, covariate.values, facet.name, facet_lev, mod_var)
-          }                 
+          }
           
           #split into components
           mod_vars <- strsplit(mod_var,":")[[1]]
           #iterate over levels of modified variable
-          for (p in 1:length(raw_levels[[mod_var]])) {          
+          for (p in 1:length(raw_levels[[mod_var]])) {
             #raw level name is original coefficient name
             mod_coef <- raw_levels[[mod_var]][p]
             #split it up
             mod_coefs <- strsplit(mod_coef,":")[[1]]
             #modify data dummy
             for (lev in 1:length(mod_coefs)) {
-              #get level name from coefficient name 
+              #get level name from coefficient name
               mod_lev <- sub(mod_vars[lev],"",mod_coefs[lev])
-            }                       
+            }
+            
             #get level name to print
-            print_level_name <- level.names[[mod_var]][p] 
+            print_level_name <- level.names[[mod_var]][p]
             #get the baseline of modified var and make a blank line
             if (p == 1) {
               if (label.baseline) {
                 print_level_name <- paste("(Baseline = ",print_level_name,")",sep="")
               }
-              d_lev <- data.frame(pe=NA, se=NA, upper=NA, lower=NA, var = mod_coef, printvar=paste("   ",  print_level_name,sep=""), group=print_attr_name, facet= print_facet_level)        
+              d_lev <- data.frame(pe=NA, se=NA, upper=NA, lower=NA, var = mod_coef, printvar=paste("   ",  print_level_name,sep=""), group=print_attr_name, facet= print_facet_level)
             } else {
               #retrieve estimate and SE
               val_pe <- estimate.source[1,p-1]
@@ -492,12 +493,12 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
                 val_se <- estimate.source[2,p-1]
                 #calculate bounds
                 upper_bnd <- val_pe + zscr*val_se
-                lower_bnd <- val_pe - zscr*val_se 
+                lower_bnd <- val_pe - zscr*val_se
               } else {
                 val_se <- upper_bnd <- lower_bnd <- NA
               }
               #make line to add to plot data
-              d_lev <- data.frame(pe=val_pe, se=val_se, upper=upper_bnd, lower=lower_bnd, var = mod_coef, printvar=paste("   ", print_level_name,sep=""), group=print_attr_name, facet=print_facet_level)    
+              d_lev <- data.frame(pe=val_pe, se=val_se, upper=upper_bnd, lower=lower_bnd, var = mod_coef, printvar=paste("   ", print_level_name,sep=""), group=print_attr_name, facet=print_facet_level)
             }
             #add level data to plot data
             d  <- rbind(d, d_lev)
@@ -535,17 +536,47 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
     d$facet <- factor(d$facet,levels=unique(d$facet))
   }
   
+  ## Reorder if there is user-specified ordering
+  if (!is.null(group.order)){
+    
+    n.row <- length(unique(as.character(d$var)))
+    order.var <- vector("character", length = n.row)
+    
+    i <- 1
+    while (i<n.row){
+      for (j in group.order){
+        order.var[i] <- unique(as.character(d$var[d$var==gsub(" ","",j)]))
+        i <- i+1
+        temp.d <- d
+        temp.d$group <- gsub(" ","",temp.d$group)
+        temp.d <- subset(temp.d, group==gsub(" ","",j))
+        
+        temp.var <- unique((as.character(temp.d$var)))
+        order.var[i:(i+length(temp.var)-1)] <- temp.var
+        i <- i+length(temp.var)
+      }
+    }
+    order.var <- rev(order.var)
+    
+    order.df <- data.frame(order.var, 1:length(order.var))
+    colnames(order.df) <- c("var", "order")
+    
+    d$var <- factor(d$var, levels=order.var)
+    
+    d <- merge(d, order.df, by.x="var", by.y="var", suffixes=c("",""))
+    
+  }
   ########## plot output
   
   p = ggplot(d, aes(y=pe, x=var, colour=group))
-  p = p + coord_flip(ylim = ylim) 
-  p = p + geom_hline(yintercept = 0,size=.5,colour="black",linetype="dotted") 
+  p = p + coord_flip(ylim = ylim)
+  p = p + geom_hline(yintercept = 0,size=.5,colour="black",linetype="dotted")
   p = p + geom_pointrange(aes(ymin=lower,ymax=upper),position=position_dodge(width=dodge.size),size=point.size)
   
   #add facetting
   if (!is.null(facet.names)) {
     p = p + facet_wrap(~ facet)
-  } 
+  }
   
   # If breaks and labels Null, use default
   if (is.null(breaks) & is.null(labels)) {
@@ -557,7 +588,14 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
   } else if (!is.null(breaks) & !is.null(labels)) {
     p = p + scale_y_continuous(name=xlab, breaks=breaks, labels=labels)
   }
-  fix.xlabs <- as.character(d$printvar)[!duplicated(d$printvar)]
+  
+  if (!is.null(group.order)){
+    fix.xlabs.df <- d[!duplicated(d$var),]
+    fix.xlabs <- fix.xlabs.df[order(-fix.xlabs.df$order),]$printvar
+  } else {
+    fix.xlabs <- as.character(d$printvar)[!duplicated(d$var)]
+  }
+  
   p = p + scale_x_discrete(name="",labels=fix.xlabs[length(fix.xlabs):1])
   
   # If there's a title,add it
@@ -568,7 +606,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
   }
   # If no colors specified, use default
   if (is.null(colors)) {
-    p = p + scale_colour_discrete(" ") 
+    p = p + scale_colour_discrete(" ")
   } else if (is.vector(colors)) {
     # Make manual palette
     cPal <- rep(colors, ceiling(length(unique(d$group))/length(colors)))
@@ -576,7 +614,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
     p = p + scale_colour_manual(values=cPal)
   } else {
     cat("Error: 'colors' must be a vector. Using default colors\n")
-    p = p + scale_colour_discrete(" ") 
+    p = p + scale_colour_discrete(" ")
   }
   
   # colour scheme
@@ -589,7 +627,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
     }
     
     p = p + theme_bw1()
-    
+
   } else if (is.null(class(plot.theme)))  {
     
     cat("Error: 'plot.theme' is not a valid ggplot theme object. Using default theme\n")
@@ -599,7 +637,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
     }
     
     p = p + theme_bw1()
-    
+
   } else if (class(plot.theme)[1] != "theme") {
     
     cat("Error: 'plot.theme' is not a valid ggplot theme object. Using default theme\n")
@@ -609,8 +647,8 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
     }
     
     p = p + theme_bw1()
-    
-    # otherwise use the user-passed theme   
+
+    # otherwise use the user-passed theme
   } else {
     p = p + plot.theme
   }
@@ -624,7 +662,7 @@ plot.amce2 <- function(x, main="", xlab="Change in E[Y]", ci=.95, colors=NULL, x
       
       other.levels <- c()
       for (var in other.vars) {
-        other.levels <- c(other.levels,paste(c(var," will be held at level \"",names(covariate.values[[var]])[1],"\""),collapse = ""))                
+        other.levels <- c(other.levels,paste(c(var," will be held at level \"",names(covariate.values[[var]])[1],"\""),collapse = ""))
       }
       other.levels <- paste(other.levels,collapse = ", and ")
       resp.message <- c(resp.message,other.levels,".")
