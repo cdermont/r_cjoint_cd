@@ -2,7 +2,7 @@
 # use qualtrics data in R object
 #################################
 
-use.qualtrics <- function(object,responses=NULL,covariates = NULL,respondentID = NULL,letter="F"){
+use.qualtrics <- function(object,responses=NULL,ranks=NULL,covariates = NULL,respondentID = NULL,letter="F"){
   
   ###### Load data and detect dimensions of things
   
